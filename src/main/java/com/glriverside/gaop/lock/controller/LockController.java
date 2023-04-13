@@ -1,14 +1,15 @@
-package com.glriverside.gaop.lock;
+package com.glriverside.gaop.lock.controller;
 
+import com.glriverside.gaop.lock.LockManagerServiceImpl;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@RequestMapping("/")
+@RequestMapping("/lock")
 @RestController
 public class LockController {
-    private LockManager lockManager = new LockManager();
+    private LockManagerServiceImpl lockManager = new LockManagerServiceImpl();
 
     public LockController() {
 

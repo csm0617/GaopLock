@@ -1,35 +1,38 @@
 package com.glriverside.gaop.lock;
 
+import com.glriverside.gaop.lock.constant.K8s;
+import io.kubernetes.client.openapi.ApiException;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.V1ContainerStatus;
+import io.kubernetes.client.openapi.models.V1Pod;
+import io.kubernetes.client.openapi.models.V1PodList;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.*;
 
 @Slf4j
-public class LockManager {
+public class LockManagerServiceImpl {
     /**
      * 服务名：第几批
      */
     private Map<String, Integer> orders = new HashMap<>();
-
-    private Map<String, String> status1 = new HashMap<>();
-
-    private Map<String, String> status2 = new HashMap<>();
     /**
      * 服务名：查询时间列表
      */
     private Map<String, List<Long>> count = new HashMap<>();
+    private  List<String> batch1 =new ArrayList<>();
+    private  List<String> batch2 =new ArrayList<>();
 
     /**
      * 服务是否允许启动
      *
      * @return
      */
-    public boolean isBootable(String service) {
-        Map<String, String> batch1Status = setBatch1Status(status1);
-        Map<String, String> batch2Status = setBatch2Status(status2);
-
+    public boolean isBootable(String service) throws Exception {
+        Map<String, Boolean>  allPodStatus = getAllPodStatus();
         // 先判断传入的服务名是否有效，无效则不管他是不是真实存在统一返回ture,服务名有效就判断他的批次
         boolean containsService = orders.containsKey(service);
+
         //如果服务在设置的批次的集合中
         if (containsService) {
             //根据service遍历order中的所有键值对
@@ -37,6 +40,7 @@ public class LockManager {
                 if (key.equals(service)) {
                     //判断是不是在第一批里
                     if (orders.get(key) == 0) {
+                        batch1.add(key);
                         int currentBatch = orders.get(key);
 //                        log.info(key);
                         //如果是在第一批，那么在返回ture之前先把这个service从（服务名：批次）的map移除
@@ -45,13 +49,14 @@ public class LockManager {
                         List<String> bathRestService = getBathRestService(orders, currentBatch);
                         //   (orders.get(key) key 已经remove了导致NPE
                         //   log.info("当前批次 " + (orders.get(key) + 1) + " 还有 " + Arrays.toString(bathRestService.toArray()) + " 没有启动");
-                        if (bathRestService.size()!=0) {
+                        if (bathRestService.size() != 0) {
                             log.info("当前批次 " + (currentBatch + 1) + " 还有 " + Arrays.toString(bathRestService.toArray()) + " 没有允许启动");
-                        }else {
+                        } else {
                             log.info("当前批次 " + (currentBatch + 1) + " 都已允许启动");
                         }
                         return true;
                     } else if (orders.get(key).equals(1)) {
+                        batch2.add(key);
                         int currentBatch = orders.get(key);
                         int beforeBath = currentBatch - 1;
                         //首先判断第一批的程序是不是都已经允许启动了
@@ -67,18 +72,17 @@ public class LockManager {
                             //说明第一批启动完了
                             //把k8s的api查出来的(服务名：状态)
                             //把查出来的状态为fasle且为第一批放到第二批中
-                            for (Map.Entry<String, String> statusMap : batch1Status.entrySet()) {
-                                if (statusMap.getValue().equals("false")) {
-                                    //把启动失败的的放到下一批
-                                    orders.put(statusMap.getKey(), currentBatch + 1);
-                                }
+                            Map<String, Boolean> batch1PodStatus = getBatchPodStatus(batch1);
+                            List<String> failedPodSet = getFailedPodSet(batch1PodStatus);
+                            for (String pod : failedPodSet) {
+                                orders.put(pod,currentBatch+1);
                             }
                             log.info("第 " + currentBatch + " 批都已允许启动，" + "当前" + (currentBatch + 1) + " 批次的 " + key + " 允许启动");
                             //把service从第二批的map里移除
                             orders.remove(key);
                             List<String> bathRestService = getBathRestService(orders, currentBatch);
                             if (bathRestService.size() != 0) {
-                                log.info("当前批次"+(currentBatch+1)+"还有 " + Arrays.toString(bathRestService.toArray()) + " 没有允许启动");
+                                log.info("当前批次" + (currentBatch + 1) + " 还有 " + Arrays.toString(bathRestService.toArray()) + " 没有允许启动");
                             } else {
                                 log.info("当前批次 " + (currentBatch + 1) + " 都已允许启动");
                             }
@@ -96,18 +100,17 @@ public class LockManager {
                             //说明第一批启动完了
                             //把k8s的api查出来的(服务名：状态)
                             //把查出来的状态为fasle且为第一批放到第二批中
-                            for (Map.Entry<String, String> statusMap : batch2Status.entrySet()) {
-                                if (statusMap.getValue().equals("false")) {
-                                    orders.put(statusMap.getKey(), currentBatch + 1);
-                                }
+                            Map<String, Boolean> batch2PodStatus = getBatchPodStatus(batch2);
+                            List<String> failedPodSet = getFailedPodSet(batch2PodStatus);
+                            for (String pod : failedPodSet) {
+                                orders.put(pod,currentBatch+1);
                             }
                             log.info("第 " + currentBatch + " 批都已允许启动，" + "当前 " + (currentBatch + 1) + " 批次的 " + key + " 允许启动");
-                            ;
                             //把service从第二批的map里移除
                             orders.remove(key);
                             List<String> bathRestService = getBathRestService(orders, currentBatch);
                             if (bathRestService.size() != 0) {
-                                log.info("当前批次"+(currentBatch+1)+"还有 " + Arrays.toString(bathRestService.toArray()) + " 没有允许启动");
+                                log.info("当前批次" + (currentBatch + 1) + "还有 " + Arrays.toString(bathRestService.toArray()) + " 没有允许启动");
                             } else {
                                 log.info("当前批次 " + (currentBatch + 1) + " 都已允许启动");
                             }
@@ -169,19 +172,87 @@ public class LockManager {
         }
     }
 
-    public static Map<String, String> setBatch1Status(Map<String, String> map) {
-        map.put("a1", "ture");
-        map.put("b1", "false");
-        map.put("c1", "ture");
-        map.put("d1", "ture");
-        return map;
+    private Map<String,Boolean> getAllPodStatus() throws ApiException {
+        Map<String,Boolean> podStatusMap = new HashMap<>();
+        CoreV1Api coreV1Api = new CoreV1Api();
+        V1PodList v1PodList = coreV1Api.listNamespacedPod(
+                K8s.NAMESPACE,
+                null,
+                null,
+                null,
+                null,
+//                "name="+serviceName,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+        List<V1Pod> v1Pods = v1PodList.getItems();
+//        List<Boolean> statusList = new ArrayList<>();
+        for (V1Pod v1Pod : v1Pods) {
+            String name = v1Pod.getMetadata().getLabels().get("name");
+            List<V1ContainerStatus> containerStatuses = v1Pod.getStatus().getContainerStatuses();
+            for (V1ContainerStatus containerStatus : containerStatuses) {
+                Boolean status = containerStatus.getReady();
+                podStatusMap.put(name,status);
+            }
+        }
+        return podStatusMap;
     }
 
-    public static Map<String, String> setBatch2Status(Map<String, String> map) {
-        map.put("a2", "ture");
-        map.put("b2", "false");
-        map.put("c2", "false");
-        map.put("d2", "ture");
-        return map;
+    private  Map<String,Boolean> getBatchPodStatus(List<String> batch) throws ApiException {
+        Map<String,Boolean> podStatusMap = new HashMap<>();
+        CoreV1Api coreV1Api = new CoreV1Api();
+        for (String serviceName : batch) {
+            V1PodList v1PodList = coreV1Api.listNamespacedPod(
+                    K8s.NAMESPACE,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "name="+serviceName,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+            List<V1Pod> v1Pods = v1PodList.getItems();
+//        List<Boolean> statusList = new ArrayList<>();
+            for (V1Pod v1Pod : v1Pods) {
+                String name = v1Pod.getMetadata().getLabels().get("name");
+                List<V1ContainerStatus> containerStatuses = v1Pod.getStatus().getContainerStatuses();
+                for (V1ContainerStatus containerStatus : containerStatuses) {
+                    Boolean status = containerStatus.getReady();
+                    podStatusMap.put(name,status);
+                }
+            }
+        }
+        return podStatusMap;
     }
+    private List<String> getFailedPodSet(Map<String,Boolean> podStatus){
+        ArrayList<String> failed = new ArrayList<>();
+        for (Map.Entry<String, Boolean> pod : podStatus.entrySet()) {
+            if (!pod.getValue()){
+                failed.add(pod.getKey());
+            }
+        }
+        return failed;
+    }
+
+//    public static Map<String, String> setBatch1Status(Map<String, String> map) {
+//        map.put("a1", "ture");
+//        map.put("b1", "false");
+//        map.put("c1", "ture");
+//        map.put("d1", "ture");
+//        return map;
+//    }
+
+//    public static Map<String, String> setBatch2Status(Map<String, String> map) {
+//        map.put("a2", "ture");
+//        map.put("b2", "false");
+//        map.put("c2", "false");
+//        map.put("d2", "ture");
+//        return map;
+//    }
 }
