@@ -11,7 +11,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.*;
 
 @Slf4j
-public class LockManagerServiceImpl {
+public class LockManager  {
+
     /**
      * 服务名：第几批
      */
@@ -30,6 +31,7 @@ public class LockManagerServiceImpl {
      */
     public boolean isBootable(String service) throws Exception {
         Map<String, Boolean>  allPodStatus = getAllPodStatus();
+
         // 先判断传入的服务名是否有效，无效则不管他是不是真实存在统一返回ture,服务名有效就判断他的批次
         boolean containsService = orders.containsKey(service);
 
@@ -123,7 +125,6 @@ public class LockManagerServiceImpl {
             //服务不在集合的批次中，或者服务名无效直接返回ture，就不需要等待
             log.info(service + "服务已经允许启动过了或不在设定的批次中，允许启动");
             return true;
-
         }
 
         return false;
@@ -161,15 +162,19 @@ public class LockManagerServiceImpl {
      *
      * @param batch
      */
-    public void setBatchOrder(List<List<String>> batch) {
+    public void setBatchOrder(List<List<String>> batch) throws Exception {
+        Map<String, Boolean> allPodStatus = getAllPodStatus();
         //注意批次的下标从0开始
         for (int i = 0; i < batch.size(); i++) {
             List<String> services = batch.get(i);
             int finalI = i;
             services.forEach(service -> {
-                orders.put(service, finalI);
+                if (!allPodStatus.get(service)) {
+                    orders.put(service, finalI);
+                }
             });
         }
+
     }
 
     private Map<String,Boolean> getAllPodStatus() throws ApiException {
