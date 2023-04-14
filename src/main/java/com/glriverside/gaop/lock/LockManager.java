@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.*;
 
 @Slf4j
-public class LockManager  {
+public class LockManager {
 
     /**
      * 服务名：第几批
@@ -21,8 +21,8 @@ public class LockManager  {
      * 服务名：查询时间列表
      */
     private Map<String, List<Long>> count = new HashMap<>();
-    private  List<String> batch1 =new ArrayList<>();
-    private  List<String> batch2 =new ArrayList<>();
+    private List<String> batch1 = new ArrayList<>();
+    private List<String> batch2 = new ArrayList<>();
 
     /**
      * 服务是否允许启动
@@ -30,13 +30,24 @@ public class LockManager  {
      * @return
      */
     public boolean isBootable(String service) throws Exception {
-        Map<String, Boolean>  allPodStatus = getAllPodStatus();
-
         // 先判断传入的服务名是否有效，无效则不管他是不是真实存在统一返回ture,服务名有效就判断他的批次
         boolean containsService = orders.containsKey(service);
-
         //如果服务在设置的批次的集合中
         if (containsService) {
+            //记录服务请求得时间和重启的次数
+            if (count.containsKey(service)) {
+                List<Long> longs = count.get(service);
+                longs.add(System.currentTimeMillis());
+            } else {
+                List<Long> value = new ArrayList<>();
+                value.add(System.currentTimeMillis());
+                count.put(service, value);
+            }
+            if (count.get(service).size() >= 11) {
+                log.info("服务已经重启 " + (count.get(service).size() - 1) + " 次，超过了预设的10次，运行启动");
+                orders.remove(service);
+            }
+
             //根据service遍历order中的所有键值对
             for (String key : orders.keySet()) {
                 if (key.equals(service)) {
@@ -77,7 +88,7 @@ public class LockManager  {
                             Map<String, Boolean> batch1PodStatus = getBatchPodStatus(batch1);
                             List<String> failedPodSet = getFailedPodSet(batch1PodStatus);
                             for (String pod : failedPodSet) {
-                                orders.put(pod,currentBatch+1);
+                                orders.put(pod, currentBatch + 1);
                             }
                             log.info("第 " + currentBatch + " 批都已允许启动，" + "当前" + (currentBatch + 1) + " 批次的 " + key + " 允许启动");
                             //把service从第二批的map里移除
@@ -105,7 +116,7 @@ public class LockManager  {
                             Map<String, Boolean> batch2PodStatus = getBatchPodStatus(batch2);
                             List<String> failedPodSet = getFailedPodSet(batch2PodStatus);
                             for (String pod : failedPodSet) {
-                                orders.put(pod,currentBatch+1);
+                                orders.put(pod, currentBatch + 1);
                             }
                             log.info("第 " + currentBatch + " 批都已允许启动，" + "当前 " + (currentBatch + 1) + " 批次的 " + key + " 允许启动");
                             //把service从第二批的map里移除
@@ -118,6 +129,9 @@ public class LockManager  {
                             }
                             return true;
                         }
+                    }else {
+                        log.info(key+" 服务已经在重启过程超过了所在的批次允许启动");
+                        orders.remove(key);
                     }
                 }
             }
@@ -169,16 +183,20 @@ public class LockManager  {
             List<String> services = batch.get(i);
             int finalI = i;
             services.forEach(service -> {
-                if (!allPodStatus.get(service)) {
-                    orders.put(service, finalI);
+                Boolean success = allPodStatus.get(service);
+                if (success != null) {
+                    if (!success) {
+                        orders.put(service, finalI);
+                    }
                 }
             });
         }
 
     }
 
-    private Map<String,Boolean> getAllPodStatus() throws ApiException {
-        Map<String,Boolean> podStatusMap = new HashMap<>();
+
+    private Map<String, Boolean> getAllPodStatus() throws ApiException {
+        Map<String, Boolean> podStatusMap = new HashMap<>();
         CoreV1Api coreV1Api = new CoreV1Api();
         V1PodList v1PodList = coreV1Api.listNamespacedPod(
                 K8s.NAMESPACE,
@@ -200,14 +218,14 @@ public class LockManager  {
             List<V1ContainerStatus> containerStatuses = v1Pod.getStatus().getContainerStatuses();
             for (V1ContainerStatus containerStatus : containerStatuses) {
                 Boolean status = containerStatus.getReady();
-                podStatusMap.put(name,status);
+                podStatusMap.put(name, status);
             }
         }
         return podStatusMap;
     }
 
-    private  Map<String,Boolean> getBatchPodStatus(List<String> batch) throws ApiException {
-        Map<String,Boolean> podStatusMap = new HashMap<>();
+    private Map<String, Boolean> getBatchPodStatus(List<String> batch) throws ApiException {
+        Map<String, Boolean> podStatusMap = new HashMap<>();
         CoreV1Api coreV1Api = new CoreV1Api();
         for (String serviceName : batch) {
             V1PodList v1PodList = coreV1Api.listNamespacedPod(
@@ -216,7 +234,7 @@ public class LockManager  {
                     null,
                     null,
                     null,
-                    "name="+serviceName,
+                    "name=" + serviceName,
                     null,
                     null,
                     null,
@@ -229,16 +247,17 @@ public class LockManager  {
                 List<V1ContainerStatus> containerStatuses = v1Pod.getStatus().getContainerStatuses();
                 for (V1ContainerStatus containerStatus : containerStatuses) {
                     Boolean status = containerStatus.getReady();
-                    podStatusMap.put(name,status);
+                    podStatusMap.put(name, status);
                 }
             }
         }
         return podStatusMap;
     }
-    private List<String> getFailedPodSet(Map<String,Boolean> podStatus){
+
+    private List<String> getFailedPodSet(Map<String, Boolean> podStatus) {
         ArrayList<String> failed = new ArrayList<>();
         for (Map.Entry<String, Boolean> pod : podStatus.entrySet()) {
-            if (!pod.getValue()){
+            if (!pod.getValue()) {
                 failed.add(pod.getKey());
             }
         }
