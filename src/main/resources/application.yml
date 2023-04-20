@@ -9,3 +9,5 @@ k8s:
     config-file: kubelet.conf
     log-enabled: true # 是否开启 k8s 的 HTTP 日志
     log-level: HEADERS # HTTP 日志级别，参考：HttpLoggingInterceptor.Level
+batch:
+  order: ${BATCH_SERVICE_NAME:aa1,aa2,aa3|gg1,gg2,gg3|ss1,ss2,ss3}
