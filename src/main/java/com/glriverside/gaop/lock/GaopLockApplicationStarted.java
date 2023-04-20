@@ -1,6 +1,8 @@
 package com.glriverside.gaop.lock;
 
 import com.glriverside.gaop.lock.config.K8sConfig;
+import com.glriverside.gaop.lock.config.OrdersConfig;
+import com.glriverside.gaop.lock.service.LockManagerService;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
@@ -19,16 +21,28 @@ import org.springframework.stereotype.Component;
 
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.util.List;
+import java.util.Map;
 
 @Component
 @Slf4j
 public class GaopLockApplicationStarted implements ApplicationListener<ApplicationReadyEvent>{
     @Autowired
     private K8sConfig k8sConfig;
+    @Autowired
+    private LockManagerService lockManagerService;
+    @Autowired
+    private OrdersConfig ordersConfig;
     @Override
     public void onApplicationEvent(ApplicationReadyEvent applicationReadyEvent) {
         initK8sClient();
+        try {
+            setOrdersConfig();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
+
 
     /**
      * 初始化k8s客户端配置
@@ -88,6 +102,12 @@ public class GaopLockApplicationStarted implements ApplicationListener<Applicati
         for (V1Pod item : list.getItems()) {
             log.debug("po: {}, namespace: {}", item.getMetadata().getName(), item.getMetadata().getNamespace());
         }
+    }
+    public  void setOrdersConfig() throws Exception {
+        String order = ordersConfig.getOrder();
+        List<List<String>> batch = lockManagerService.stringToOrders(order);
+        LockManager lockManager = new LockManager();
+        Map<String, Integer> orders = lockManager.setBatchOrder(batch);
     }
 
 }
