@@ -129,8 +129,8 @@ public class LockManager {
                             }
                             return true;
                         }
-                    }else {
-                        log.info(key+" 服务已经在重启过程超过了所在的批次允许启动");
+                    } else {
+                        log.info(key + " 服务已经在重启过程超过了所在的批次允许启动");
                         orders.remove(key);
                     }
                 }
@@ -176,7 +176,7 @@ public class LockManager {
      *
      * @param batch
      */
-    public void setBatchOrder(List<List<String>> batch) throws Exception {
+    public Map<String, Integer> setBatchOrder(List<List<String>> batch) throws Exception {
         Map<String, Boolean> allPodStatus = getAllPodStatus();
         //注意批次的下标从0开始
         for (int i = 0; i < batch.size(); i++) {
@@ -191,7 +191,7 @@ public class LockManager {
                 }
             });
         }
-
+        return orders;
     }
 
 
