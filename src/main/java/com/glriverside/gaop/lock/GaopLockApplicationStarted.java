@@ -3,6 +3,7 @@ package com.glriverside.gaop.lock;
 import com.glriverside.gaop.lock.config.K8sConfig;
 import com.glriverside.gaop.lock.config.OrdersConfig;
 import com.glriverside.gaop.lock.service.LockManagerService;
+import com.glriverside.gaop.lock.util.DataUtil;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
@@ -108,6 +109,8 @@ public class GaopLockApplicationStarted implements ApplicationListener<Applicati
         List<List<String>> batch = lockManagerService.stringToOrders(order);
         LockManager lockManager = new LockManager();
         Map<String, Integer> orders = lockManager.setBatchOrder(batch);
+        DataUtil.orders.putAll(orders);
+
     }
 
 }

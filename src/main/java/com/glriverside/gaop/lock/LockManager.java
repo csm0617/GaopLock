@@ -1,6 +1,7 @@
 package com.glriverside.gaop.lock;
 
 import com.glriverside.gaop.lock.constant.K8s;
+import com.glriverside.gaop.lock.util.DataUtil;
 import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1ContainerStatus;
@@ -16,7 +17,7 @@ public class LockManager {
     /**
      * 服务名：第几批
      */
-    private Map<String, Integer> orders = new HashMap<>();
+//    private Map<String, Integer> DataUtil.orders = new HashMap<>();
     /**
      * 服务名：查询时间列表
      */
@@ -31,7 +32,7 @@ public class LockManager {
      */
     public boolean isBootable(String service) throws Exception {
         // 先判断传入的服务名是否有效，无效则不管他是不是真实存在统一返回ture,服务名有效就判断他的批次
-        boolean containsService = orders.containsKey(service);
+        boolean containsService = DataUtil.orders.containsKey(service);
         //如果服务在设置的批次的集合中
         if (containsService) {
             //记录服务请求得时间和重启的次数
@@ -45,39 +46,39 @@ public class LockManager {
             }
             if (count.get(service).size() >= 11) {
                 log.info("服务已经重启 " + (count.get(service).size() - 1) + " 次，超过了预设的10次，运行启动");
-                orders.remove(service);
+                DataUtil.orders.remove(service);
             }
 
             //根据service遍历order中的所有键值对
-            for (String key : orders.keySet()) {
+            for (String key : DataUtil.orders.keySet()) {
                 if (key.equals(service)) {
                     //判断是不是在第一批里
-                    if (orders.get(key) == 0) {
+                    if (DataUtil.orders.get(key) == 0) {
                         batch1.add(key);
-                        int currentBatch = orders.get(key);
+                        int currentBatch = DataUtil.orders.get(key);
 //                        log.info(key);
                         //如果是在第一批，那么在返回ture之前先把这个service从（服务名：批次）的map移除
                         log.info("第 " + (currentBatch + 1) + " 批的 " + key + " 允许启动");
-                        orders.remove(key);
-                        List<String> bathRestService = getBathRestService(orders, currentBatch);
-                        //   (orders.get(key) key 已经remove了导致NPE
-                        //   log.info("当前批次 " + (orders.get(key) + 1) + " 还有 " + Arrays.toString(bathRestService.toArray()) + " 没有启动");
+                        DataUtil.orders.remove(key);
+                        List<String> bathRestService = getBathRestService(DataUtil.orders, currentBatch);
+                        //   (DataUtil.orders.get(key) key 已经remove了导致NPE
+                        //   log.info("当前批次 " + (DataUtil.orders.get(key) + 1) + " 还有 " + Arrays.toString(bathRestService.toArray()) + " 没有启动");
                         if (bathRestService.size() != 0) {
                             log.info("当前批次 " + (currentBatch + 1) + " 还有 " + Arrays.toString(bathRestService.toArray()) + " 没有允许启动");
                         } else {
                             log.info("当前批次 " + (currentBatch + 1) + " 都已允许启动");
                         }
                         return true;
-                    } else if (orders.get(key).equals(1)) {
+                    } else if (DataUtil.orders.get(key).equals(1)) {
                         batch2.add(key);
-                        int currentBatch = orders.get(key);
+                        int currentBatch = DataUtil.orders.get(key);
                         int beforeBath = currentBatch - 1;
                         //首先判断第一批的程序是不是都已经允许启动了
-                        //1.先获取orders中value为1的key的size的大小
+                        //1.先获取DataUtil.orders中value为1的key的size的大小
                         //2.size为0说明第一批的已经全部允许启动了，至于是不是都已经成功运行了我们先不管
-                        Integer rest = getRestSize(orders, beforeBath);
+                        Integer rest = getRestSize(DataUtil.orders, beforeBath);
                         if (rest > 0) {
-                            List<String> bathRestService = getBathRestService(orders, beforeBath);
+                            List<String> bathRestService = getBathRestService(DataUtil.orders, beforeBath);
                             //说明第一批还没有允许全部启动，第二批的也不允许启动
                             log.info("第 " + (beforeBath + 1) + " 批的 " + Arrays.toString(bathRestService.toArray()) + " 还没有允许启动，" + "第 " + (currentBatch + 1) + " 批的 " + key + " 已经发送请求，不允许启动");
                             return false;
@@ -88,12 +89,12 @@ public class LockManager {
                             Map<String, Boolean> batch1PodStatus = getBatchPodStatus(batch1);
                             List<String> failedPodSet = getFailedPodSet(batch1PodStatus);
                             for (String pod : failedPodSet) {
-                                orders.put(pod, currentBatch + 1);
+                                DataUtil.orders.put(pod, currentBatch + 1);
                             }
                             log.info("第 " + currentBatch + " 批都已允许启动，" + "当前" + (currentBatch + 1) + " 批次的 " + key + " 允许启动");
                             //把service从第二批的map里移除
-                            orders.remove(key);
-                            List<String> bathRestService = getBathRestService(orders, currentBatch);
+                            DataUtil.orders.remove(key);
+                            List<String> bathRestService = getBathRestService(DataUtil.orders, currentBatch);
                             if (bathRestService.size() != 0) {
                                 log.info("当前批次" + (currentBatch + 1) + " 还有 " + Arrays.toString(bathRestService.toArray()) + " 没有允许启动");
                             } else {
@@ -101,12 +102,12 @@ public class LockManager {
                             }
                             return true;
                         }
-                    } else if (orders.get(key).equals(2)) {
-                        int currentBatch = orders.get(key);
+                    } else if (DataUtil.orders.get(key).equals(2)) {
+                        int currentBatch = DataUtil.orders.get(key);
                         int beforeBath = currentBatch - 1;
-                        Integer rest = getRestSize(orders, beforeBath);
+                        Integer rest = getRestSize(DataUtil.orders, beforeBath);
                         if (rest > 0) {
-                            List<String> bathRestService = getBathRestService(orders, beforeBath);
+                            List<String> bathRestService = getBathRestService(DataUtil.orders, beforeBath);
                             log.info("第 " + currentBatch + " 批的 " + Arrays.toString(bathRestService.toArray()) + " 还没有允许启动，" + "第 " + (currentBatch + 1) + " 批的 " + key + " 已经发送请求，不允许启动");
                             return false;
                         } else if (rest == 0) {
@@ -116,12 +117,12 @@ public class LockManager {
                             Map<String, Boolean> batch2PodStatus = getBatchPodStatus(batch2);
                             List<String> failedPodSet = getFailedPodSet(batch2PodStatus);
                             for (String pod : failedPodSet) {
-                                orders.put(pod, currentBatch + 1);
+                                DataUtil.orders.put(pod, currentBatch + 1);
                             }
                             log.info("第 " + currentBatch + " 批都已允许启动，" + "当前 " + (currentBatch + 1) + " 批次的 " + key + " 允许启动");
                             //把service从第二批的map里移除
-                            orders.remove(key);
-                            List<String> bathRestService = getBathRestService(orders, currentBatch);
+                            DataUtil.orders.remove(key);
+                            List<String> bathRestService = getBathRestService(DataUtil.orders, currentBatch);
                             if (bathRestService.size() != 0) {
                                 log.info("当前批次" + (currentBatch + 1) + "还有 " + Arrays.toString(bathRestService.toArray()) + " 没有允许启动");
                             } else {
@@ -131,7 +132,7 @@ public class LockManager {
                         }
                     } else {
                         log.info(key + " 服务已经在重启过程超过了所在的批次允许启动");
-                        orders.remove(key);
+                        DataUtil.orders.remove(key);
                     }
                 }
             }
@@ -145,7 +146,7 @@ public class LockManager {
     }
 
     public void printMap() {
-        for (Map.Entry<String, Integer> order : orders.entrySet()) {
+        for (Map.Entry<String, Integer> order : DataUtil.orders.entrySet()) {
             log.info(order.getKey() + ":" + order.getValue());
         }
     }
@@ -178,16 +179,15 @@ public class LockManager {
      */
     public Map<String, Integer> setBatchOrder(List<List<String>> batch) throws Exception {
         Map<String, Boolean> allPodStatus = getAllPodStatus();
+        Map<String, Integer> orders = new HashMap<>();
         //注意批次的下标从0开始
         for (int i = 0; i < batch.size(); i++) {
             List<String> services = batch.get(i);
             int finalI = i;
             services.forEach(service -> {
                 Boolean success = allPodStatus.get(service);
-                if (success != null) {
-                    if (!success) {
-                        orders.put(service, finalI);
-                    }
+                if (success == null||!success) {
+                    orders.put(service, finalI);
                 }
             });
         }
